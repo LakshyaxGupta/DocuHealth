@@ -1,65 +1,40 @@
-# # from flask import Flask, request, jsonify
-# # from flask_cors import CORS
-
-# # import json
-# # import qrcode
+# from dotenv import load_dotenv
+# load_dotenv()
 
 
-# # # https://docs.google.com/forms/d/e/1FAIpQLSdiPZGbKxWmA6eByq_T5onCe0kW3Ueon-3QgqII6ODHhJTK-Q/viewform?usp=pp_url&entry.653749192=Srijan+Pandey&entry.1896956791=20&entry.1828253941=Male&entry.472268035=8776655443&entry.1678012848=Hostel+10B
-
-# base_url="https://docs.google.com/forms/d/e/1FAIpQLSdiPZGbKxWmA6eByq_T5onCe0kW3Ueon-3QgqII6ODHhJTK-Q/viewform?usp=pp_url"
-
-# # app = Flask(__name__)
-# #   # Allows React to connect
-# # CORS(app, origins="http://localhost:5173")
-
-# # @app.after_request
-# # def add_cors_headers(response):
-# #     response.headers['Access-Control-Allow-Origin'] = '*'
-# #     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-# #     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-# #     return response
-
-
-
-
-# # @app.route('/submit', methods=['POST'])
-# # def handle_form():
-# #     data = request.get_json()
-# #     # data = json.loads(response)
-
-# #     if not data:
-# #         return jsonify({"error": "No data recieved"}),400
-    
-# #     print(data)
-# #     print("\n")
-
-# #     name = data.get("name")
-# #     age = data.get("age")
-# #     gender = data.get("gender")
-# #     contact = data.get("contact")
-# #     address = data.get("address")
-
-
-# #     details_url = f"&entry.653749192={name.replace(' ','+')}&entry.1896956791={age}&entry.1828253941={gender}&entry.472268035={contact}&entry.1678012848={address.replace(' ','+')}"
-
-# #     qr = qrcode.make(details_url)
-# #     qr.save(rf"D:\PBL-Proj\MedicalSys\Resources\QRs\{name}_qr.png")
-
-    
-
-# # if __name__ == '__main__':
-# #     app.run(debug=True, port=5000)  # Runs on port 5000
-# from flask import Flask, request, jsonify
+# from flask import Flask, request, jsonify, send_from_directory
 # from flask_cors import CORS
 # import qrcode
-# from flask import send_from_directory
+# import os
+# import re
+# from appwrite.client import Client
+# from appwrite.services.storage import Storage
+# from io import BytesIO
+
+# client = Client()
+
+# client.set_endpoint(os.environ["VITE_APPWRITE_ENDPOINT"])  # Replace with your Appwrite endpoint
+# client.set_project(os.environ["VITE_APPWRITE_PROJECT_ID"])  # Replace with your Project ID
+# client.set_key(os.environ["VITE_APPWRITE_API_KEY"])         # Replace with your secret API key
+
+# storage = Storage(client)
+
+# # Base URL for Google Form
+# base_url = "https://docs.google.com/forms/d/e/1FAIpQLSfZtumeav3JdAN_488eiX1ksf2UNKPtyWHygQnpoilmn6pEGA/viewform?usp=pp_url"
+
+# # Initialize Flask app
 # app = Flask(__name__)
 
-# # CORS configuration for the server
-# # CORS(app, origins=["hhttp://127.0.0.1:5000/submit"])  # Adjust for your React app's URL
+# # Enable CORS for React app running on port 5173
 # CORS(app)
 
+# # QR code save directory
+# qr_folder = r"D:\WebD\PROJECT\DocuHealth\DocuHealth\Resources\QRs"
+
+# # Ensure the folder exists
+# os.makedirs(qr_folder, exist_ok=True)
+
+# # Handle OPTIONS request for CORS preflight
 # @app.route('/submit', methods=['OPTIONS'])
 # def handle_options():
 #     response = jsonify({})
@@ -68,60 +43,82 @@
 #     response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
 #     return response
 
+# # Handle POST request to generate QR code
 # @app.route('/submit', methods=['POST'])
 # def handle_form():
-#     data = request.get_json()
+#     try:
+#         data = request.get_json()
+#         url = data.get("url")
 
-#     if not data:
-#         return jsonify({"error": "No data received"}), 400
-    
-#     print(data)
-    
-#     name = data.get("name")
-#     age = data.get("age")
-#     gender = data.get("gender")
-#     contact = data.get("contact")
-#     address = data.get("address")
+#         if not url:
+#             return jsonify({"error": "No URL provided"}), 400
 
-#     details_url = f"&entry.653749192={name.replace(' ','+')}&entry.1896956791={age}&entry.1828253941={gender}&entry.472268035={contact}&entry.1678012848={address.replace(' ','+')}"
-#     url=base_url+details_url
-#     qr = qrcode.make(url)
-#     qr.save(rf"D:\WebD\PROJECT\DocuHealth\Resources\QRs\{name}_qr.png")
+#         sanitized_name = re.sub(r'[\\/*?:"<>|]', "_", url.split('=')[1])
+#         qr_filename = f"{sanitized_name}_qr.png"
 
-#     return jsonify({"message": "QR code created successfully!"}), 200
+#         # Generate QR code as bytes
+#         qr_io = BytesIO()
+#         qr = qrcode.make(url)
+#         qr.save(qr_io, format='PNG')
+#         qr_io.seek(0)
 
-# if __name__ == '__main__':
-#     app.run(debug=True, port=5000)
+#         # Upload to Appwrite
+#         from appwrite.id import ID
+#         result = storage.create_file(
+#             bucket_id=os.environ["VITE_APPWRITE_BUCKET_ID"],
+#             file_id=ID.unique(),
+#             file=qr_io
+#         )
 
-#     @app.route('/qrs/<filename>')
+#         file_id = result['$id']
+#         file_url = f"{os.environ['VITE_APPWRITE_ENDPOINT']}/storage/buckets/{os.environ['VITE_APPWRITE_BUCKET_ID']}/files/{file_id}/view?project={os.environ['VITE_APPWRITE_PROJECT_ID']}"
+
+#         return jsonify({"message": "QR code uploaded!", "qr_url": file_url}), 200
+
+#     except Exception as e:
+#         import traceback
+#         traceback.print_exc()  # <-- Print the full error to terminal
+#         return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500
+
+# # Route to serve the QR code image
+# @app.route('/qrs/<filename>')
 # def serve_qr(filename):
 #     directory = r"D:\WebD\PROJECT\DocuHealth\DocuHealth\Resources\QRs"
 #     return send_from_directory(directory, filename)
 
+# # Run the Flask app
+# if __name__ == '__main__':
+#     app.run(debug=True, port=5000)
 
 
-from flask import Flask, request, jsonify, send_from_directory
+from dotenv import load_dotenv
+load_dotenv()
+
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import qrcode
 import os
 import re
+from io import BytesIO
+from appwrite.client import Client
+from appwrite.services.storage import Storage
+from appwrite.id import ID
+from appwrite.permission import Permission
+from appwrite.role import Role
+from appwrite.input_file import InputFile
+# Initialize Appwrite client
+client = Client()
+client.set_endpoint(os.environ["VITE_APPWRITE_ENDPOINT"])         # e.g. http://localhost/v1
+client.set_project(os.environ["VITE_APPWRITE_PROJECT_ID"])        # Appwrite project ID
+client.set_key(os.environ["VITE_APPWRITE_API_KEY"])               # Appwrite API key
 
-# Base URL for Google Form
-base_url = "https://docs.google.com/forms/d/e/1FAIpQLSfZtumeav3JdAN_488eiX1ksf2UNKPtyWHygQnpoilmn6pEGA/viewform?usp=pp_url"
+storage = Storage(client)
 
 # Initialize Flask app
 app = Flask(__name__)
+CORS(app)  # Allow cross-origin requests (React dev server)
 
-# Enable CORS for React app running on port 5173
-CORS(app)
-
-# QR code save directory
-qr_folder = r"D:\WebD\PROJECT\DocuHealth\DocuHealth\Resources\QRs"
-
-# Ensure the folder exists
-os.makedirs(qr_folder, exist_ok=True)
-
-# Handle OPTIONS request for CORS preflight
+# Handle CORS preflight requests
 @app.route('/submit', methods=['OPTIONS'])
 def handle_options():
     response = jsonify({})
@@ -130,42 +127,56 @@ def handle_options():
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
     return response
 
-# Handle POST request to generate QR code
+# Handle POST request to generate and upload QR code
+from io import BytesIO
+import qrcode
+
 @app.route('/submit', methods=['POST'])
 def handle_form():
-    data = request.get_json()
-
-    if not data:
-        return jsonify({"error": "No data received"}), 400
-
-    print("Received data:", data)
-
-    # Extract the URL sent from the frontend
-    url = data.get("url")
-
-    # Generate QR code
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
-    
-    sanitized_name = re.sub(r'[\\/*?:"<>|]', "_", url.split('=')[1])  # Extract name and sanitize
-    qr_filename = f"{sanitized_name}_qr.png"
-    file_path = os.path.join(qr_folder, qr_filename)
-
     try:
+        data = request.get_json()
+        url = data.get("url")
+
+        if not url:
+            return jsonify({"error": "No URL provided"}), 400
+
+        sanitized_name = re.sub(r'[\\/*?:"<>|]', "_", url.split('=')[1])
+        qr_filename = f"{sanitized_name}_qr.png"
+
+        # Generate QR code in memory
+        qr_io = BytesIO()
         qr = qrcode.make(url)
-        qr.save(file_path)
-        print(f"QR code saved successfully: {file_path}")  # Confirm save
+        qr.save(qr_io, format='PNG')
+        qr_io.seek(0)  # Move back to the start of the BytesIO object
+
+        # Save to local disk if needed
+        qr_folder = r"D:\WebD\PROJECT\DocuHealth\DocuHealth\Resources\QRs"
+        os.makedirs(qr_folder, exist_ok=True)
+        qr_path = os.path.join(qr_folder, qr_filename)
+        with open(qr_path, 'wb') as f:
+            f.write(qr_io.getbuffer())
+
+        # Upload to Appwrite Storage - pass a file object opened from disk
+        from appwrite.id import ID
+        with open(qr_path, 'rb') as f:
+            input_file = InputFile.from_path(qr_path)
+            result = storage.create_file(
+                bucket_id=os.environ["VITE_APPWRITE_BUCKET_ID"],
+                file_id=ID.unique(),
+                file=input_file
+            )
+
+        file_id = result['$id']
+        file_url = f"{os.environ['VITE_APPWRITE_ENDPOINT']}/storage/buckets/{os.environ['VITE_APPWRITE_BUCKET_ID']}/files/{file_id}/view?project={os.environ['VITE_APPWRITE_PROJECT_ID']}"
+
+        return jsonify({ "message": "QR code uploaded!", "qr_url": file_url, "qr_filename": qr_filename}), 200
+
     except Exception as e:
-        return jsonify({"error": f"Failed to save QR code: {str(e)}"}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500
 
-    return jsonify({"message": "QR code created successfully!", "qr_filename": qr_filename}), 200
 
-# Route to serve the QR code image
-@app.route('/qrs/<filename>')
-def serve_qr(filename):
-    directory = r"D:\WebD\PROJECT\DocuHealth\DocuHealth\Resources\QRs"
-    return send_from_directory(directory, filename)
-
-# Run the Flask app
+# Run Flask app
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
